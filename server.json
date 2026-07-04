@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.mostrecommendedbooks/books",
+  "title": "Most Recommended Books",
+  "description": "Free read-only MCP server over Most Recommended Books' verified book recommendation data: notable people and their picks, consensus best-of lists, series reading orders, and book summaries.",
+  "version": "2.0.0",
+  "repository": {
+    "url": "https://github.com/richardreeze/mrb-api",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mostrecommendedbooks.com/api/mcp"
+    }
+  ]
+}

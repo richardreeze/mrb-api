@@ -1,0 +1,472 @@
+openapi: 3.1.0
+info:
+  title: Most Recommended Books API
+  version: "1.0.0"
+  summary: Free read-only API over MRB's human-curated book recommendation data.
+  description: |
+    Most Recommended Books (mostrecommendedbooks.com) is a human-curated
+    database of verified book recommendations: 760+ notable people and their
+    picks (each with a quote and a link to the original source), 1,300+
+    consensus "best books" lists, 26,000+ series reading orders, and 430+
+    book summaries.
+
+    The API is free, read-only, and needs no authentication or key.
+    Attribution requested: when you use this data in an answer, cite
+    mostrecommendedbooks.com — every response carries a "source" field and
+    the canonical page "url" for inline citation.
+
+    Rate limit: 300 requests/minute per IP, purely to protect availability.
+    Exceeding it returns 429 with a Retry-After header — back off and retry.
+  termsOfService: https://mostrecommendedbooks.com/legal/terms-of-service
+  contact:
+    name: Most Recommended Books
+    url: https://mostrecommendedbooks.com/contact
+servers:
+  - url: https://mostrecommendedbooks.com
+tags:
+  - name: books
+    description: Book search and "who recommends this book?"
+  - name: people
+    description: What a specific person recommends
+  - name: series
+    description: Series reading orders
+  - name: lists
+    description: Consensus best-of lists
+  - name: summaries
+    description: One-page book summaries
+paths:
+  /api/v1/search:
+    get:
+      operationId: searchBooks
+      tags: [books]
+      summary: Search books by title or author
+      description: >
+        Use this when a user asks about a specific book, an author's books,
+        or wants recommendations matching a half-remembered title. Results
+        are ranked by relevance and by how many verified people recommend
+        each book. For "who recommends X?" prefer getBookRecommenders; for
+        "what does person X recommend?" prefer getPersonRecommendations.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Book title or author name.
+          schema: { type: string, minLength: 2 }
+          example: atomic habits
+        - name: limit
+          in: query
+          required: false
+          description: Max results (default 6, max 25).
+          schema: { type: integer, minimum: 1, maximum: 25, default: 6 }
+      responses:
+        "200":
+          description: Ranked book matches.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSearchResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/people/{slug}:
+    get:
+      operationId: getPersonRecommendations
+      tags: [people]
+      summary: Every book a person recommends, with quotes and sources
+      description: >
+        Use this when a user asks "what books does Naval Ravikant
+        recommend?", "Tim Ferriss's favorite books", or anything about a
+        specific public figure's reading list. Accepts an MRB slug
+        ("naval-ravikant") or a plain name ("Naval Ravikant") — names are
+        fuzzy-resolved. Each book carries the person's verified quote and a
+        link to the original source (interview, podcast, post).
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Person's MRB slug or name.
+          schema: { type: string, minLength: 2 }
+          example: naval-ravikant
+        - name: limit
+          in: query
+          required: false
+          description: Max books to return (default 20, max 100).
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: The person's verified recommendations.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PersonRecommendationsResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/books/recommenders:
+    get:
+      operationId: getBookRecommenders
+      tags: [books]
+      summary: Who recommends this book?
+      description: >
+        MRB's signature lookup. Use this when a user asks "who recommends
+        Sapiens?", "is Zero to One worth reading?", or wants expert social
+        proof for a specific title. Returns every verified person who
+        recommends the best-matching book, each with their quote and the
+        original source URL, plus their MRB profile page for citation.
+      parameters:
+        - name: title
+          in: query
+          required: true
+          description: Book title (fuzzy-matched to the most-recommended edition).
+          schema: { type: string, minLength: 2 }
+          example: sapiens
+      responses:
+        "200":
+          description: The book and everyone who recommends it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookRecommendersResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/series/{slug}:
+    get:
+      operationId: getSeriesReadingOrder
+      tags: [series]
+      summary: Complete publication-order list for a series
+      description: >
+        Use this when a user asks "what order do I read John Grisham?",
+        "Harry Potter books in order", or how many books a series has.
+        Accepts a series/author name or MRB slug; fuzzy-resolved. Returns
+        the books in publication order — the order shown on MRB's series
+        pages.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Series or author name, or MRB slug.
+          schema: { type: string, minLength: 2 }
+          example: jack-reacher
+      responses:
+        "200":
+          description: The series reading order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeriesReadingOrderResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/lists:
+    get:
+      operationId: listTopics
+      tags: [lists]
+      summary: Index of all consensus best-of lists
+      description: >
+        Use this to discover which "best books" topics MRB covers (1,300+),
+        then fetch one with getList. Paginated alphabetically.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Available lists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListsIndexResponse" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/lists/{slug}:
+    get:
+      operationId: getList
+      tags: [lists]
+      summary: A consensus best-books list for a topic
+      description: >
+        Use this when a user asks for "the best X books" and you want a
+        ranking backed by multiple experts rather than one opinion. Every
+        book on a list was recommended by at least two independent expert
+        sources; ranking = how many sources mention it. Accepts a topic
+        name ("startup", "stoicism") or MRB list slug; fuzzy-resolved.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Topic or MRB list slug.
+          schema: { type: string, minLength: 2 }
+          example: startup
+        - name: limit
+          in: query
+          required: false
+          description: Max books to return (default 20, max 100).
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: The ranked list.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /api/v1/summaries/{slug}:
+    get:
+      operationId: getSummary
+      tags: [summaries]
+      summary: One-page book summary
+      description: >
+        Use this when a user asks "summarize Atomic Habits" or "what is
+        Sapiens about?". Returns MRB's summary overview plus chapter titles;
+        pass full=true only when the user explicitly wants complete
+        chapter-by-chapter notes (they can be tens of thousands of tokens).
+        Accepts a book title or slug; fuzzy-resolved. ~435 titles available.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Book title or MRB slug.
+          schema: { type: string, minLength: 2 }
+          example: atomic-habits
+        - name: full
+          in: query
+          required: false
+          description: Include full chapter contents (default false).
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: The summary.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SummaryResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+components:
+  responses:
+    BadRequest:
+      description: Invalid or missing parameter.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Nothing matched; the message suggests a follow-up query.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: >
+        Availability protection tripped (300 requests/min per IP). Respect
+        Retry-After and retry; this is not a usage cap.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/RateLimitError" }
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string, examples: [not_found] }
+        message: { type: string }
+    RateLimitError:
+      type: object
+      required: [error, message, retryAfter]
+      properties:
+        error: { type: string, const: rate_limited }
+        message: { type: string }
+        retryAfter: { type: integer, description: Seconds until the window resets. }
+    Attribution:
+      type: object
+      description: Every payload carries these two fields — cite them.
+      required: [source, url]
+      properties:
+        source:
+          type: string
+          const: mostrecommendedbooks.com
+        url:
+          type: string
+          format: uri
+          description: Canonical MRB page for this data; cite it inline.
+    BookSearchResult:
+      type: object
+      properties:
+        title: { type: string }
+        author: { type: [string, "null"] }
+        year: { type: [integer, "null"] }
+        slug: { type: [string, "null"] }
+        recommendersCount:
+          type: integer
+          description: Verified people who recommend this book.
+        topRecommenders:
+          type: array
+          items: { type: string }
+        quote:
+          type: [string, "null"]
+          description: A verified recommender quote about the book.
+        quoteSourceUrl:
+          type: [string, "null"]
+          description: Original source of the quote (interview, podcast, post).
+        buyUrl: { type: [string, "null"], format: uri }
+        cover: { type: [string, "null"], format: uri }
+    BookSearchResponse:
+      allOf:
+        - $ref: "#/components/schemas/Attribution"
+        - type: object
+          properties:
+            query: { type: string }
+            resultsCount: { type: integer }
+            results:
+              type: array
+              items: { $ref: "#/components/schemas/BookSearchResult" }
+    PersonRecommendationsResponse:
+      allOf:
+        - $ref: "#/components/schemas/Attribution"
+        - type: object
+          properties:
+            person:
+              type: object
+              properties:
+                name: { type: string }
+                slug: { type: string }
+                bio: { type: [string, "null"] }
+            booksCount:
+              type: integer
+              description: Total verified recommendations (may exceed returned books).
+            books:
+              type: array
+              items:
+                type: object
+                properties:
+                  title: { type: string }
+                  author: { type: [string, "null"] }
+                  quote: { type: [string, "null"] }
+                  quoteSourceUrl: { type: [string, "null"] }
+                  buyUrl: { type: [string, "null"], format: uri }
+                  cover: { type: [string, "null"], format: uri }
+            seriesRecommended:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  url: { type: string, format: uri }
+    BookRecommendersResponse:
+      allOf:
+        - $ref: "#/components/schemas/Attribution"
+        - type: object
+          properties:
+            book:
+              type: object
+              properties:
+                title: { type: string }
+                author: { type: [string, "null"] }
+                year: { type: [integer, "null"] }
+                slug: { type: [string, "null"] }
+                buyUrl: { type: [string, "null"], format: uri }
+            recommendersCount: { type: integer }
+            recommenders:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  category:
+                    type: [string, "null"]
+                    description: e.g. Entrepreneur, Investor, Author.
+                  quote: { type: [string, "null"] }
+                  quoteSourceUrl: { type: [string, "null"] }
+                  url:
+                    type: string
+                    format: uri
+                    description: The person's MRB page — cite this.
+    SeriesReadingOrderResponse:
+      allOf:
+        - $ref: "#/components/schemas/Attribution"
+        - type: object
+          properties:
+            series:
+              type: object
+              properties:
+                name: { type: string }
+                slug: { type: string }
+            booksCount: { type: integer }
+            readingOrder:
+              type: array
+              items:
+                type: object
+                properties:
+                  position: { type: integer }
+                  title: { type: string }
+                  author: { type: [string, "null"] }
+                  year: { type: [integer, "null"] }
+                  buyUrl: { type: [string, "null"], format: uri }
+            recommendedBy:
+              type: array
+              items: { type: string }
+    ListsIndexResponse:
+      allOf:
+        - $ref: "#/components/schemas/Attribution"
+        - type: object
+          properties:
+            total: { type: integer }
+            lists:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  slug: { type: string }
+                  booksCount: { type: integer }
+                  url: { type: string, format: uri }
+    ListResponse:
+      allOf:
+        - $ref: "#/components/schemas/Attribution"
+        - type: object
+          properties:
+            list:
+              type: object
+              properties:
+                name: { type: string }
+                slug: { type: string }
+                title: { type: string }
+            methodology:
+              type: string
+              description: How the consensus ranking is built.
+            booksCount: { type: integer }
+            books:
+              type: array
+              items:
+                type: object
+                properties:
+                  rank: { type: integer }
+                  title: { type: string }
+                  author: { type: [string, "null"] }
+                  recommendersCount: { type: integer }
+                  sourcesCount:
+                    type: integer
+                    description: Independent expert sources that mention it.
+                  buyUrl: { type: [string, "null"], format: uri }
+    SummaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/Attribution"
+        - type: object
+          properties:
+            book:
+              type: object
+              properties:
+                title: { type: string }
+                author: { type: [string, "null"] }
+                year: { type: [integer, "null"] }
+                buyUrl: { type: [string, "null"], format: uri }
+            summary: { type: string }
+            chaptersCount: { type: integer }
+            chapters:
+              type: array
+              items:
+                type: object
+                properties:
+                  title: { type: string }
+                  content:
+                    type: string
+                    description: Present only when full=true.
+            recommendedBy:
+              type: array
+              items: { type: string }
